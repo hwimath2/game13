@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>우주 비행기 게임</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== 공통 레이아웃 ===== */
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #gameCanvas {
+      max-width: 100%;
+      max-height: 100%;
+      aspect-ratio: 9/16;
+      box-shadow: 0 0 20px rgba(0, 100, 255, 0.5);
+      opacity: 0;
+      transition: opacity 2s ease;
+    }
+    @media (orientation: portrait) {
+      #gameCanvas {
+        width: 100%;
+        height: auto;
+      }
+    }
+    @media (orientation: landscape) {
+      #gameCanvas {
+        height: 100vh;
+        width: auto;
+      }
+    }
+    .control-buttons {
+      position: fixed;
+      bottom: 5vh;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .control-button {
+      width: 15vw;
+      height: 15vw;
+      max-width: 80px;
+      max-height: 80px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+      border: 2px solid #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: #fff;
+      pointer-events: auto;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .control-button:hover {
+      background: rgba(255, 255, 255, 0.5);
+      transform: scale(1.1);
+    }
+    .control-button:active {
+      background: rgba(255, 255, 255, 0.7);
+      transform: scale(0.95);
+    }
+    .control-button::before {
+      content: attr(data-arrow);
+    }
+    #restartBtn {
+      display: none;
+      position: absolute;
+      left: 50%;
+      top: 60%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 120px;
+      font-size: 32px;
+      background: rgba(255, 255, 255, 0.4);
+      border: 3px solid #fff;
+      color: #fff;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+      z-index: 100;
+    }
+    @keyframes pulse {
+      0% {
+        transform: translate(-50%, -50%) scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+      }
+      70% {
+        transform: translate(-50%, -50%) scale(1.05);
+        box-shadow: 0 0 0 10px rgba(255, 255, 255, 0);
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+      }
+    }
+    /* 인트로 */
+    #introContainer {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      z-index: 2000;
+      opacity: 1;
+      transition: opacity 2.5s ease;
+    }
+    #introVideo {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <!-- 인트로 비디오 -->
+  <div id="introContainer">
+    <video id="introVideo" playsinline muted>
+      <source src="intro.mp4" type="video/mp4" />
+      브라우저가 비디오를 지원하지 않습니다.
+    </video>
+  </div>
+  <!-- 게임 -->
+  <div class="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div class="control-buttons">
+      <button id="restartBtn" class="control-button" data-arrow="↺"></button>
+    </div>
+  </div>
+
+  <script>
+    /* -------------------- 인트로 처리 -------------------- */
+    const introContainer = document.getElementById("introContainer");
+    const introVideo = document.getElementById("introVideo");
+    const canvas = document.getElementById("gameCanvas");
+    let introPlayed = false;
+    let transitionStarted = false;
+
+    function playIntro() {
+      introVideo.play().catch(showPlayPrompt);
+      introVideo.addEventListener("timeupdate", () => {
+        const d = introVideo.duration,
+          t = introVideo.currentTime;
+        if (t >= d * 0.5 && !transitionStarted) {
+          transitionStarted = true;
+          startFadeTransition();
+        }
+      });
+    }
+    function showPlayPrompt() {
+      const p = document.createElement("div");
+      Object.assign(p.style, {
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%,-50%)",
+        color: "#fff",
+        fontSize: "24px",
+        background: "rgba(0,0,0,.5)",
+        padding: "20px",
+        borderRadius: "10px",
+        cursor: "pointer",
+      });
+      p.textContent = "화면을 클릭하여 시작하세요";
+      introContainer.appendChild(p);
+      introContainer.addEventListener(
+        "click",
+        () => {
+          introVideo.play();
+          p.remove();
+        },
+        { once: true }
+      );
+    }
+    function startFadeTransition() {
+      if (introPlayed) return;
+      introPlayed = true;
+      introContainer.style.opacity = "0";
+      setTimeout(checkImagesLoaded, 2000);
+    }
+    introVideo.addEventListener("ended", () => {
+      if (!transitionStarted) startFadeTransition();
+    });
+
+    /* -------------------- 이미지 로드 -------------------- */
+    const ASSETS = {
+      bg: "background.png",
+      p: "player.png",
+      e1: "enemy1.png",
+      e2: "enemy2.png",
+      h1: "health_item1.png",
+      h2: "health_item2.png",
+    };
+    const IMG = {};
+    let loaded = 0;
+    function checkImagesLoaded() {
+      introContainer.style.display = "none";
+      for (const k in ASSETS) {
+        IMG[k] = new Image();
+        IMG[k].src = ASSETS[k];
+        IMG[k].onload = () => ++loaded === Object.keys(ASSETS).length && initGame();
+        IMG[k].onerror = () => ++loaded === Object.keys(ASSETS).length && initGame();
+      }
+      setTimeout(() => !player && initGame(), 5000);
+    }
+
+    /* -------------------- 캔버스 & 상수 -------------------- */
+    const ctx = canvas.getContext("2d");
+    canvas.width = 800;
+    canvas.height = 600;
+
+    const PLAYER_SIZE = 80;
+    const ENEMY_SIZE = 50;
+    const ITEM_SIZE = 40;
+    const ITEM_INTERVAL = 10000;
+    const BASE_SHOT_INT = 500;
+    const SPEED_FACTOR = 0.02;
+    const MOVE_SPEED = 8;
+
+    /* -------------------- 상태 -------------------- */
+    let player,
+      enemies,
+      missiles,
+      items,
+      explosions,
+      playerEnergy,
+      score,
+      gameOver,
+      missileCount,
+      missilePickups,
+      shotInterval,
+      lastItemTime,
+      lastShotTime,
+      startTime;
+    let canvasXRatio = 1,
+      canvasYRatio = 1,
+      moveSpeedX = MOVE_SPEED,
+      moveSpeedY = MOVE_SPEED;
+    let isTouching = false,
+      lastTouchX = null,
+      lastTouchY = null;
+
+    function updateCanvasRatio() {
+      const r = canvas.getBoundingClientRect();
+      canvasXRatio = canvas.width / r.width;
+      canvasYRatio = canvas.height / r.height;
+      if (canvasXRatio > canvasYRatio) {
+        moveSpeedX = MOVE_SPEED * (canvasYRatio / canvasXRatio);
+        moveSpeedY = MOVE_SPEED;
+      } else {
+        moveSpeedX = MOVE_SPEED;
+        moveSpeedY = MOVE_SPEED * (canvasXRatio / canvasYRatio);
+      }
+    }
+    window.addEventListener("resize", updateCanvasRatio);
+
+    /* -------------------- 입력 -------------------- */
+    const keys = {};
+    window.addEventListener("keydown", (e) => (keys[e.key] = true));
+    window.addEventListener("keyup", (e) => (keys[e.key] = false));
+
+    const restartBtn = document.getElementById("restartBtn");
+    restartBtn.addEventListener("click", () => {
+      restartBtn.style.display = "none";
+      initGame();
+    });
+
+    function pointerStart(px, py) {
+      isTouching = true;
+      const rect = canvas.getBoundingClientRect();
+      const cx = (px * canvas.width) / rect.width;
+      const cy = (py * canvas.height) / rect.height;
+      lastTouchX = cx;
+      lastTouchY = cy;
+      player.x = cx - player.w / 2;
+      player.y = cy - player.h / 2;
+      clampPlayer();
+    }
+    function pointerMove(px, py) {
+      if (!isTouching) return;
+      const rect = canvas.getBoundingClientRect();
+      const cx = (px * canvas.width) / rect.width;
+      const cy = (py * canvas.height) / rect.height;
+      const dx = cx - lastTouchX;
+      const dy = cy - lastTouchY;
+      player.x += dx;
+      player.y += dy;
+      clampPlayer();
+      lastTouchX = cx;
+      lastTouchY = cy;
+    }
+    function clampPlayer() {
+      player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
+    }
+    canvas.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+        pointerStart(e.touches[0].clientX, e.touches[0].clientY);
+      },
+      { passive: false }
+    );
+    canvas.addEventListener(
+      "touchmove",
+      (e) => {
+        e.preventDefault();
+        pointerMove(e.touches[0].clientX, e.touches[0].clientY);
+      },
+      { passive: false }
+    );
+    canvas.addEventListener("touchend", () => (isTouching = false));
+
+    canvas.addEventListener("mousedown", (e) => pointerStart(e.clientX, e.clientY));
+    canvas.addEventListener("mousemove", (e) => pointerMove(e.clientX, e.clientY));
+    canvas.addEventListener("mouseup", () => (isTouching = false));
+
+    window.addEventListener("keydown", (e) => e.key === " " && shootMissile());
+
+    /* -------------------- 유틸 -------------------- */
+    function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+      if (w < 2 * r) r = w / 2;
+      if (h < 2 * r) r = h / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+
+    /* -------------------- 클래스 -------------------- */
+    class Player {
+      constructor() {
+        this.w = PLAYER_SIZE;
+        this.h = PLAYER_SIZE;
+        this.x = canvas.width / 2 - this.w / 2;
+        this.y = canvas.height - this.h - 10;
+      }
+      move() {
+        if (keys.ArrowLeft && this.x > 0) this.x -= moveSpeedX;
+        if (keys.ArrowRight && this.x < canvas.width - this.w) this.x += moveSpeedX;
+        if (keys.ArrowUp && this.y > 0) this.y -= moveSpeedY;
+        if (keys.ArrowDown && this.y < canvas.height - this.h) this.y += moveSpeedY;
+      }
+      draw() {
+        if (IMG.p && IMG.p.complete) ctx.drawImage(IMG.p, this.x, this.y, this.w, this.h);
+        else {
+          ctx.fillStyle = "blue";
+          ctx.fillRect(this.x, this.y, this.w, this.h);
+        }
+      }
+    }
+
+    /* --- 미사일: 날카로운 네온 화살표 --- */
+    class Missile {
+      constructor(x, y, ang = 0) {
+        this.w = 10;
+        this.h = 28;
+        this.x = x - this.w / 2;
+        this.y = y;
+        this.sp = 10;
+        this.ang = (ang * Math.PI) / 180;
+      }
+      move() {
+        this.y -= this.sp;
+        this.x += Math.sin(this.ang) * 6;
+      }
+      draw() {
+        ctx.save();
+        ctx.translate(this.x + this.w / 2, this.y + this.h / 2);
+        ctx.rotate(this.ang);
+        ctx.shadowColor = "#ffae33";
+        ctx.shadowBlur = 12;
+        const grad = ctx.createLinearGradient(0, this.h / 2, 0, -this.h / 2);
+        grad.addColorStop(0, "#fff");
+        grad.addColorStop(1, "#ff4500");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, -this.h / 2);
+        ctx.lineTo(this.w / 2, this.h / 2);
+        ctx.lineTo(-this.w / 2, this.h / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    }
+
+    class Enemy {
+      constructor(type) {
+        this.w = ENEMY_SIZE;
+        this.h = ENEMY_SIZE;
+        this.x = Math.random() * (canvas.width - this.w);
+        this.y = -this.h;
+        this.type = type; // 1 or 2
+        this.health = type;
+        this.baseSp = 1;
+      }
+      move(now) {
+        const elapsed = (now - startTime) / 1000;
+        this.y += this.baseSp + elapsed * SPEED_FACTOR;
+      }
+      draw() {
+        const img = this.type === 1 ? IMG.e1 : IMG.e2;
+        if (img && img.complete) ctx.drawImage(img, this.x, this.y, this.w, this.h);
+        else {
+          ctx.fillStyle = this.type === 1 ? "purple" : "darkred";
+          ctx.fillRect(this.x, this.y, this.w, this.h);
+        }
+      }
+    }
+
+    /* --- 폭발 애니메이션 --- */
+    class Explosion {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.r = 12;
+        this.alpha = 1;
+      }
+      update() {
+        this.r += 3;
+        this.alpha -= 0.06;
+      }
+      draw() {
+        if (this.alpha <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r);
+        g.addColorStop(0, "#ffff88");
+        g.addColorStop(0.3, "#ffaa33");
+        g.addColorStop(0.6, "#ff5522");
+        g.addColorStop(1, "rgba(255,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      get done() {
+        return this.alpha <= 0;
+      }
+    }
+
+    class Item {
+      constructor() {
+        this.w = ITEM_SIZE;
+        this.h = ITEM_SIZE;
+        this.x = Math.random() * (canvas.width - this.w);
+        this.y = -this.h;
+        this.sp = 3;
+        this.type = Math.random() < 0.5 ? "health" : "missile";
+      }
+      move() {
+        this.y += this.sp;
+      }
+      draw() {
+        const img = this.type === "health" ? IMG.h1 : IMG.h2;
+        if (img && img.complete) ctx.drawImage(img, this.x, this.y, this.w, this.h);
+        else {
+          ctx.fillStyle = this.type === "health" ? "green" : "orange";
+          ctx.fillRect(this.x, this.y, this.w, this.h);
+        }
+      }
+    }
+
+    /* -------------------- 충돌 & 발사 -------------------- */
+    function isCollision(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+    function shootMissile() {
+      const sx = player.x + player.w / 2,
+        sy = player.y;
+      if (missileCount === 1) {
+        missiles.push(new Missile(sx, sy));
+      } else {
+        for (let i = 0; i < missileCount; i++) {
+          const ang = (i - (missileCount - 1) / 2) * 15;
+          missiles.push(new Missile(sx, sy, ang));
+        }
+      }
+    }
+
+    /* -------------------- 게임 초기화 -------------------- */
+    function initGame() {
+      player = new Player();
+      enemies = [];
+      missiles = [];
+      items = [];
+      explosions = [];
+      playerEnergy = 100;
+      score = 0;
+      gameOver = false;
+      missileCount = 1;
+      missilePickups = 0;
+      shotInterval = BASE_SHOT_INT;
+      startTime = performance.now();
+      lastItemTime = startTime;
+      lastShotTime = startTime;
+      updateCanvasRatio();
+      setTimeout(() => (canvas.style.opacity = "1"), 500);
+      restartBtn.style.display = "none";
+      requestAnimationFrame(gameLoop);
+    }
+
+    /* -------------------- UI & 배경 -------------------- */
+    function drawBackground() {
+      if (IMG.bg && IMG.bg.complete) ctx.drawImage(IMG.bg, 0, 0, canvas.width, canvas.height);
+      else {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    function drawUI() {
+      const gx = 20,
+        gy = 20,
+        gw = 240,
+        gh = 26,
+        r = 13;
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      roundRect(ctx, gx, gy, gw, gh, r, true, false);
+      const grad = ctx.createLinearGradient(gx, 0, gx + gw, 0);
+      grad.addColorStop(0, "#00ffcc");
+      grad.addColorStop(1, "#0066ff");
+      ctx.fillStyle = grad;
+      roundRect(ctx, gx, gy, (gw * playerEnergy) / 100, gh, r, true, false);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#fff";
+      roundRect(ctx, gx, gy, gw, gh, r, false, true);
+      ctx.font = "16px 'Orbitron', sans-serif";
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.fillText(playerEnergy + "%", gx + gw / 2, gy + gh - 6);
+      ctx.font = "28px 'Orbitron', sans-serif";
+      ctx.textAlign = "right";
+      ctx.shadowColor = "#00baff";
+      ctx.shadowBlur = 4;
+      ctx.fillText("SCORE " + score.toString().padStart(5, "0"), canvas.width - 30, 40);
+      ctx.shadowBlur = 0;
+    }
+
+    /* -------------------- 메인 루프 -------------------- */
+    function gameLoop(now) {
+      drawBackground();
+      drawUI();
+
+      /* 자동 발사 */
+      if (now - lastShotTime >= shotInterval) {
+        shootMissile();
+        lastShotTime = now;
+      }
+
+      /* 플레이어 */
+      player.move();
+      player.draw();
+
+      /* 적 스폰 */
+      if (Math.random() < 0.02) enemies.push(new Enemy(Math.random() < 0.5 ? 1 : 2));
+
+      /* 아이템 */
+      if (now - lastItemTime >= ITEM_INTERVAL) {
+        items.push(new Item());
+        lastItemTime = now;
+      }
+
+      /* 적 업데이트 */
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        e.move(now);
+        e.draw();
+        if (e.y > canvas.height) {
+          enemies.splice(i, 1);
+          continue;
+        }
+        if (isCollision(player, e)) {
+          playerEnergy -= 20;
+          explosions.push(new Explosion(e.x + e.w / 2, e.y + e.h / 2));
+          enemies.splice(i, 1);
+          if (playerEnergy <= 0) gameOver = true;
+          continue;
+        }
+        for (let j = missiles.length - 1; j >= 0; j--) {
+          if (isCollision(missiles[j], e)) {
+            missiles.splice(j, 1);
+            e.health--;
+            if (e.health <= 0) {
+              score++;
+              explosions.push(new Explosion(e.x + e.w / 2, e.y + e.h / 2));
+              enemies.splice(i, 1);
+            }
+            break;
+          }
+        }
+      }
+
+      /* 아이템 업데이트 */
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i];
+        it.move();
+        it.draw();
+        if (it.y > canvas.height) {
+          items.splice(i, 1);
+          continue;
+        }
+        if (isCollision(player, it)) {
+          if (it.type === "health") {
+            playerEnergy = Math.min(100, playerEnergy + 30);
+          } else {
+            missilePickups = Math.min(3, missilePickups + 1);
+            if (missilePickups === 1) shotInterval = BASE_SHOT_INT / 2;
+            else if (missilePickups === 2) missileCount = 2;
+            else if (missilePickups === 3) missileCount = 3;
+          }
+          items.splice(i, 1);
+        }
+      }
+
+      /* 미사일 업데이트 */
+      for (let i = missiles.length - 1; i >= 0; i--) {
+        const m = missiles[i];
+        m.move();
+        m.draw();
+        if (m.y < -m.h) missiles.splice(i, 1);
+      }
+
+      /* 폭발 효과 */
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        const ex = explosions[i];
+        ex.update();
+        ex.draw();
+        if (ex.done) explosions.splice(i, 1);
+      }
+
+      /* 게임오버 */
+      if (gameOver) {
+        ctx.fillStyle = "rgba(0,0,0,.7)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "40px 'Orbitron', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 40);
+        ctx.font = "28px 'Orbitron', sans-serif";
+        ctx.fillText("SCORE: " + score, canvas.width / 2, canvas.height / 2);
+        restartBtn.style.display = "flex";
+        return;
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    /* -------------------- 시작 -------------------- */
+    window.addEventListener("load", playIntro);
+  </script>
+</body>
+</html>
